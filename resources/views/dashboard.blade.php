@@ -751,7 +751,10 @@
 
             <section class="section" id="busqueda-transacciones" data-section="busqueda-transacciones" {{ (($section ?? 'principal') === 'busqueda-transacciones') ? '' : 'hidden' }}>
                 <h1>Búsqueda de transacciones</h1>
-                @php($busquedaCat = (string) request()->query('cat', 'personas'))
+                @php($busq = $busqueda ?? null)
+                @php($busqMeta = $busq['meta'] ?? [])
+                @php($busquedaCat = (string) ($busqMeta['cat'] ?? request()->query('cat', 'personas')))
+                @php($busquedaQ = trim((string) ($busqMeta['q'] ?? request()->query('q', ''))))
                 @php($busquedaTitles = [
                     'personas' => 'Portal Personas',
                     'empresas' => 'Portal Empresas',
@@ -768,7 +771,94 @@
                         <a href="{{ url('/dashboard/busqueda-transacciones') }}?cat=empresas" data-busqueda-cat="empresas">Portal Empresas</a>
                         <a href="{{ url('/dashboard/busqueda-transacciones') }}?cat=ecommerce" data-busqueda-cat="ecommerce">Portal ecommerce</a>
                     </div>
-                    <div class="muted" id="busquedaMsg">Se estará agregando información muy pronto.</div>
+
+                    @if ($busquedaCat === 'personas')
+                        <div class="section" style="margin-top: 14px;">
+                            <div class="table-title" style="margin-bottom: 6px;">
+                                <span>Busqueda Transaccion</span>
+                            </div>
+
+                            <form class="searchbar" id="busquedaPersonasSearch" autocomplete="off">
+                                <input
+                                    type="text"
+                                    id="busquedaPersonasInput"
+                                    placeholder="Buscar por NUMERO_DOCUMENTO, EMAIL, CUS, ID_TRANSACCION"
+                                    value="{{ $busquedaQ }}"
+                                />
+                                <div class="search-actions">
+                                    <button type="button" id="busquedaPersonasClear">Limpiar búsqueda</button>
+                                    <button type="submit">Buscar</button>
+                                </div>
+                            </form>
+
+                            @php($p = $busq['personas'] ?? null)
+                            @php($perr = is_array($p) ? ($p['error'] ?? null) : null)
+                            @php($prows = is_array($p) ? ($p['rows'] ?? []) : [])
+
+                            @if ($perr)
+                                <div class="placeholder" style="margin-top: 10px;">Error ejecutando la búsqueda: <code>{{ $perr }}</code></div>
+                            @elseif (empty($prows))
+                                @if ($busquedaQ !== '')
+                                    <div class="placeholder" style="margin-top: 10px;">Sin resultados para la búsqueda: <code>{{ $busquedaQ }}</code></div>
+                                @else
+                                    <div class="placeholder" style="margin-top: 10px;">No hay registros para mostrar.</div>
+                                @endif
+                            @else
+                                <div class="table-wrap search-fit" style="margin-top: 10px;">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th><code>fecha_inicio</code></th>
+                                                <th><code>ESTADO</code></th>
+                                                <th><code>INTENTOS</code></th>
+                                                <th><code>TITULAR</code></th>
+                                                <th><code>NUMEROFACTURA</code></th>
+                                                <th><code>FECHA_TRANSACCION</code></th>
+                                                <th><code>VALOR</code></th>
+                                                <th><code>DESCRIPCION_COMPRA</code></th>
+                                                <th><code>NUMERO_DOCUMENTO</code></th>
+                                                <th><code>TELEFONO</code></th>
+                                                <th><code>EMAIL</code></th>
+                                                <th><code>CUS</code></th>
+                                                <th><code>TIPO_TRANS</code></th>
+                                                <th><code>ORIGEN_PAGO</code></th>
+                                                <th><code>FORMA_PAGO</code></th>
+                                                <th><code>CodigoCliente</code></th>
+                                                <th><code>PASA_NUMERO</code></th>
+                                                <th><code>ID_TRANSACCION</code></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($prows as $r)
+                                                <tr>
+                                                    <td><code>{{ (string) ($r->fecha_inicio ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ESTADO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->INTENTOS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TITULAR ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->NUMEROFACTURA ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->FECHA_TRANSACCION ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->VALOR ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->DESCRIPCION_COMPRA ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->NUMERO_DOCUMENTO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TELEFONO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->EMAIL ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->CUS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TIPO_TRANS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ORIGEN_PAGO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->FORMA_PAGO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->CodigoCliente ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->PASA_NUMERO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ID_TRANSACCION ?? '') }}</code></td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+                        </div>
+                    @else
+                        <div class="muted" id="busquedaMsg">Se estará agregando información muy pronto.</div>
+                    @endif
                 </div>
             </section>
 
@@ -896,7 +986,7 @@
         var transState = { p_claro: 1, p_pasarela: 1, q: '' };
 
         // State for categories inside "Búsqueda de transacciones" view
-        var busquedaState = { cat: 'personas' };
+        var busquedaState = { cat: 'personas', q: '' };
 
         function parseQuery(search) {
             var out = {};
@@ -936,8 +1026,15 @@
                 } else {
                     busquedaState.cat = 'personas';
                 }
+
+                if (typeof q.q === 'string') {
+                    busquedaState.q = q.q;
+                } else {
+                    busquedaState.q = '';
+                }
             } catch (e) {
                 busquedaState.cat = 'personas';
+                busquedaState.q = '';
             }
         }
 
@@ -968,6 +1065,14 @@
             var url = '/dashboard/transacciones?p_claro=' + transState.p_claro + '&p_pasarela=' + transState.p_pasarela;
             if (transState.q && transState.q.trim() !== '') {
                 url += '&q=' + encodeURIComponent(transState.q.trim());
+            }
+            return url;
+        }
+
+        function buildBusquedaUrl() {
+            var url = '/dashboard/busqueda-transacciones?cat=' + encodeURIComponent(busquedaState.cat || 'personas');
+            if (busquedaState.q && String(busquedaState.q).trim() !== '') {
+                url += '&q=' + encodeURIComponent(String(busquedaState.q).trim());
             }
             return url;
         }
@@ -1036,11 +1141,49 @@
                 return;
             }
 
+            if (key === 'busqueda-transacciones') {
+                var urlB = buildBusquedaUrl();
+                var scrollYB = window.scrollY;
+
+                fetch(urlB, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { 'X-Requested-With': 'fetch' }
+                })
+                    .then(function (res) {
+                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                        return res.text();
+                    })
+                    .then(function (html) {
+                        var parser = new DOMParser();
+                        var doc = parser.parseFromString(html, 'text/html');
+
+                        var current = document.querySelector('[data-section="busqueda-transacciones"]');
+                        var next = doc.querySelector('[data-section="busqueda-transacciones"]');
+                        if (!current || !next) throw new Error('missing busqueda-transacciones section');
+
+                        current.replaceWith(next);
+                        showSection('busqueda-transacciones');
+
+                        if (push) {
+                            history.pushState({ section: 'busqueda-transacciones' }, '', urlB);
+                        }
+                        window.scrollTo(0, scrollYB);
+                    })
+                    .catch(function (err) {
+                        console.error('Busqueda load failed', err);
+                        window.location.href = urlB;
+                    });
+
+                return;
+            }
+
             showSection(key);
             if (push) {
                 var nextUrl = key === 'principal' ? '/dashboard' : '/dashboard/' + key;
                 if (key === 'busqueda-transacciones') {
-                    nextUrl += '?cat=' + encodeURIComponent(busquedaState.cat || 'pagos');
+                    nextUrl += '?cat=' + encodeURIComponent(busquedaState.cat || 'personas');
                 }
                 history.pushState({ section: key }, '', nextUrl);
             }
@@ -1226,13 +1369,46 @@
             if (!a) return;
 
             e.preventDefault();
-            busquedaState.cat = a.getAttribute('data-busqueda-cat') || 'pagos';
-            applyBusquedaUi();
+            busquedaState.cat = a.getAttribute('data-busqueda-cat') || 'personas';
+            // Keep current query (if any)
+            var input = document.getElementById('busquedaPersonasInput');
+            if (input) busquedaState.q = String(input.value || '');
+            navigateTo('busqueda-transacciones', true);
+        });
 
-            var url = '/dashboard/busqueda-transacciones?cat=' + encodeURIComponent(busquedaState.cat);
-            history.pushState({ section: 'busqueda-transacciones' }, '', url);
-            showSection('busqueda-transacciones');
-            applyBusquedaUi();
+        // Portal Personas search
+        document.addEventListener('submit', function (e) {
+            var form = e.target;
+            if (!form || form.id !== 'busquedaPersonasSearch') return;
+
+            var section = document.querySelector('[data-section="busqueda-transacciones"]');
+            if (!section || section.hidden) return;
+
+            e.preventDefault();
+
+            busquedaState.cat = 'personas';
+            var input = document.getElementById('busquedaPersonasInput');
+            busquedaState.q = (input && input.value) ? String(input.value) : '';
+
+            navigateTo('busqueda-transacciones', true);
+        });
+
+        // Portal Personas clear search
+        document.addEventListener('click', function (e) {
+            var btnClear = e.target && e.target.closest ? e.target.closest('#busquedaPersonasClear') : null;
+            if (!btnClear) return;
+
+            var section = document.querySelector('[data-section="busqueda-transacciones"]');
+            if (!section || section.hidden) return;
+
+            e.preventDefault();
+
+            var input = document.getElementById('busquedaPersonasInput');
+            if (input) input.value = '';
+
+            busquedaState.cat = 'personas';
+            busquedaState.q = '';
+            navigateTo('busqueda-transacciones', true);
         });
     })();
 </script>

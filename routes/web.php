@@ -99,6 +99,96 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
 
     $data = $getMonitoringSnapshot() + ['section' => $section];
 
+    if ($section === 'busqueda-transacciones') {
+        $cat = (string) request()->query('cat', 'personas');
+        $cat = trim($cat) === '' ? 'personas' : $cat;
+
+        $q = (string) request()->query('q', '');
+        $q = trim($q);
+
+        $data['busqueda'] = [
+            'meta' => [
+                'cat' => $cat,
+                'q' => $q,
+            ],
+            'personas' => [
+                'rows' => [],
+                'error' => null,
+            ],
+        ];
+
+        if ($cat === 'personas') {
+            try {
+                $requiredTables = ['gt_pago_pasarela', 'cl_pagosclaro', 'gt_valores'];
+                foreach ($requiredTables as $tName) {
+                    if (!Schema::hasTable($tName)) {
+                        throw new RuntimeException('La tabla ' . $tName . ' no existe en la base de datos.');
+                    }
+                }
+
+                $query = DB::table('gt_pago_pasarela as b')
+                    ->leftJoin('cl_pagosclaro as a', 'b.ID_TRANSACCION', '=', 'a.CLACO_NUMERO')
+                    ->leftJoin('gt_valores as orgen', function ($join) {
+                        $join->on('b.ORIGEN_PAGO', '=', 'orgen.CODIGO')
+                            ->where('orgen.ELIMINADO', '=', '-1')
+                            ->where('orgen.LIST_NUMERO', '=', 10005);
+                    })
+                    ->leftJoin('gt_valores as frpag', function ($join) {
+                        $join->on('b.FORMA_PAGO', '=', 'frpag.CODIGO')
+                            ->where('frpag.ELIMINADO', '=', '-1')
+                            ->where('frpag.LIST_NUMERO', '=', 10001);
+                    })
+                    ->join('gt_valores as tiptra', function ($join) {
+                        $join->on('a.TIPO_TRANS', '=', 'tiptra.CODIGO')
+                            ->where('tiptra.ELIMINADO', '=', '-1')
+                            ->where('tiptra.LIST_NUMERO', '=', 10002);
+                    })
+                    ->select([
+                        'a.FECHA_INICIO as fecha_inicio',
+                        'b.ESTADO as ESTADO',
+                        'b.INTENTOS as INTENTOS',
+                        'b.TITULAR as TITULAR',
+                        'b.NUMEROFACTURA as NUMEROFACTURA',
+                        'b.FECHA_TRANSACCION as FECHA_TRANSACCION',
+                        'b.VALOR as VALOR',
+                        'b.DESCRIPCION_COMPRA as DESCRIPCION_COMPRA',
+                        'b.NUMERO_DOCUMENTO as NUMERO_DOCUMENTO',
+                        'b.TELEFONO as TELEFONO',
+                        'b.EMAIL as EMAIL',
+                        'b.CUS as CUS',
+                        'tiptra.VALOR_ES as TIPO_TRANS',
+                        'orgen.VALOR_ES as ORIGEN_PAGO',
+                        'frpag.VALOR_ES as FORMA_PAGO',
+                        'a.CodigoCliente as CodigoCliente',
+                        'b.PASA_NUMERO as PASA_NUMERO',
+                        'b.ID_TRANSACCION as ID_TRANSACCION',
+                    ]);
+
+                if ($q !== '') {
+                    $query->where(function ($w) use ($q) {
+                        // For numeric ids, prefer exact match on ID_TRANSACCION
+                        if (ctype_digit($q)) {
+                            $w->orWhere('b.ID_TRANSACCION', '=', $q);
+                        } else {
+                            $w->orWhere('b.ID_TRANSACCION', 'like', '%' . $q . '%');
+                        }
+                        $w->orWhere('b.NUMERO_DOCUMENTO', 'like', '%' . $q . '%')
+                            ->orWhere('b.EMAIL', 'like', '%' . $q . '%')
+                            ->orWhere('b.CUS', 'like', '%' . $q . '%');
+                    });
+                }
+
+                $query->orderByDesc('a.FECHA_INICIO');
+
+                $rows = $query->limit(50)->get();
+                $data['busqueda']['personas']['rows'] = $rows;
+            } catch (Throwable $e) {
+                $data['busqueda']['personas']['error'] = $e->getMessage();
+                $data['busqueda']['personas']['rows'] = [];
+            }
+        }
+    }
+
     if ($section === 'transacciones') {
         $perPage = 5;
         $pages = 4;
