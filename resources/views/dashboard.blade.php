@@ -138,6 +138,31 @@
             background: var(--chip);
         }
 
+        .consulta-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 14px;
+            margin-top: 14px;
+        }
+
+        .consulta-card {
+            width: 100%;
+        }
+
+        @media (min-width: 900px) {
+            .consulta-card {
+                flex: 0 1 calc((100% - 28px) / 3);
+                width: auto;
+            }
+        }
+
+        .consulta-card.consulta-expanded {
+            flex: 0 0 100%;
+            width: 100%;
+            max-width: 100%;
+        }
+
         .nav a:hover, .nav a:focus {
             outline: none;
             border-color: rgba(148, 163, 184, 0.28);
@@ -407,6 +432,24 @@
             outline: none;
         }
 
+        .acc-btn {
+            border: 1px solid var(--borderStrong);
+            background: var(--chip);
+            color: inherit;
+            border-radius: 10px;
+            padding: 8px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        .acc-btn:hover, .acc-btn:focus {
+            outline: none;
+            border-color: rgba(148, 163, 184, 0.28);
+            background: var(--chipActive);
+        }
+
         .theme-wrap {
             position: sticky;
             bottom: 14px;
@@ -543,14 +586,14 @@
 <div class="layout">
     <aside class="sidebar" aria-label="Menú">
         <div class="brand">
-            <a class="brand-title" href="{{ url('/dashboard') }}" data-section-link="principal" style="text-decoration:none;">Claro Colombia</a>
+            <a class="brand-title" href="{{ url('/dashboard') }}" data-section-link="inicio" style="text-decoration:none;">Claro Colombia</a>
             <button class="toggle" id="sidebarToggle" type="button" aria-label="Plegar o desplegar menú" aria-expanded="true">
                 Menú
             </button>
         </div>
 
         <nav class="nav">
-            <a href="{{ url('/dashboard') }}" data-section-link="principal">
+            <a href="{{ url('/dashboard') }}" data-section-link="inicio">
                 <span class="icon">H</span>
                 <span>Inicio</span>
             </a>
@@ -613,363 +656,14 @@
                 @endif
             </div>
 
-            <section class="section" id="principal" data-section="principal" {{ (($section ?? 'principal') === 'principal') ? '' : 'hidden' }}>
-                <h1>Inicio</h1>
-                <div class="placeholder">
-                    Bienvenido al dashboard de <strong>Claro Colombia</strong>.<br>
-                    Esta vista es solo una introducción. Más adelante puedes agregar más información aquí.
-                </div>
-            </section>
-
-            <section class="section" id="inicio" data-section="inicio" {{ (($section ?? 'principal') === 'inicio') ? '' : 'hidden' }}>
-                <h1>Inicio</h1>
-                <div class="grid">
-                    <div class="card half">
-                        <h2>Gráfico 1</h2>
-                        <div class="placeholder" style="height: 220px; display:flex; align-items:center; justify-content:center;">Gráfico vacío</div>
-                    </div>
-                    <div class="card half">
-                        <h2>Gráfico 2</h2>
-                        <div class="placeholder" style="height: 220px; display:flex; align-items:center; justify-content:center;">Gráfico vacío</div>
-                    </div>
-                    <div class="card half">
-                        <h2>Gráfico 3</h2>
-                        <div class="placeholder" style="height: 220px; display:flex; align-items:center; justify-content:center;">Gráfico vacío</div>
-                    </div>
-                    <div class="card half">
-                        <h2>Gráfico 4</h2>
-                        <div class="placeholder" style="height: 220px; display:flex; align-items:center; justify-content:center;">Gráfico vacío</div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="section" id="transacciones" data-section="transacciones" {{ (($section ?? 'principal') === 'transacciones') ? '' : 'hidden' }}>
-                <h1>Transacciones</h1>
-                @php($t = $transacciones ?? null)
-
-                @if (!$t)
-                    <div class="placeholder">No hay datos de transacciones cargados.</div>
-                @else
-                    @php($meta = $t['meta'] ?? ['per_page' => 5, 'pages' => 4, 'page_claro' => 1, 'page_pasarela' => 1, 'param_claro' => 'p_claro', 'param_pasarela' => 'p_pasarela'])
-                    @php($activeQ = trim((string) ($meta['q'] ?? '')))
-
-                    <form class="searchbar" id="transSearch" autocomplete="off">
-                        <input
-                            type="text"
-                            id="transSearchInput"
-                            placeholder="Buscar por CUS, NUMERO_DOCUMENTO, ID_TRANSACCION, EMAIL, CLACO_NUMERO"
-                            value="{{ (string) ($meta['q'] ?? '') }}"
-                        />
-                        <div class="search-actions">
-                            <button type="button" id="transClearBtn">Limpiar búsqueda</button>
-                            <button type="submit">Buscar</button>
-                        </div>
-                    </form>
-
-                    @php($shownAny = false)
-                    @foreach (['cl_pagosclaro' => 'cl_pagosclaro', 'gt_pago_pasarela' => 'gt_pago_pasarela'] as $key => $label)
-                        @php($info = $t[$key] ?? null)
-                        @php($rowsObj = $info['rows'] ?? null)
-                        @php($rowsCount = (is_object($rowsObj) && method_exists($rowsObj, 'count')) ? (int) $rowsObj->count() : 0)
-
-                        @if ($activeQ !== '' && $rowsCount === 0)
-                            @continue
-                        @endif
-
-                        @php($shownAny = true)
-                        @php($pg = ($info['pagination'] ?? ['page' => 1, 'per_page' => ($meta['per_page'] ?? 5), 'pages' => ($meta['pages'] ?? 4), 'param' => ($key === 'cl_pagosclaro' ? ($meta['param_claro'] ?? 'p_claro') : ($meta['param_pasarela'] ?? 'p_pasarela'))]))
-                        <div class="section" style="margin-top: 14px;" data-trans-table="{{ $key }}">
-                            <div class="table-title">
-                                <span>{{ $label }}</span>
-                                <span class="pill">
-                                    <span class="badge">
-                                        <span class="dot {{ !empty($info['exists']) && empty($info['error']) ? 'ok' : 'fail' }}"></span>
-                                        {{ !empty($info['exists']) ? 'OK' : 'MISSING' }}
-                                    </span>
-                                </span>
-                            </div>
-
-                            @if (!$info)
-                                <div class="placeholder">Sin información.</div>
-                            @elseif (empty($info['exists']))
-                                <div class="placeholder">La tabla <code>{{ $label }}</code> no existe en la base de datos.</div>
-                            @elseif (!empty($info['error']))
-                                <div class="placeholder">Error consultando <code>{{ $label }}</code>: <code>{{ $info['error'] }}</code></div>
-                            @elseif (empty($info['columns']))
-                                <div class="placeholder">No se pudieron leer las columnas de <code>{{ $label }}</code>.</div>
-                            @else
-                                <div class="table-sub">Mostrando top {{ (int) ($pg['per_page'] ?? 5) }} · Página {{ (int) ($pg['page'] ?? 1) }} de {{ (int) ($pg['pages'] ?? 4) }} (orden: <code>created_at</code> o <code>id</code> desc).</div>
-                                <div class="table-wrap {{ $activeQ !== '' ? 'search-fit' : '' }}" style="margin-top: 10px;">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                @foreach ($info['columns'] as $col)
-                                                    <th><code>{{ $col }}</code></th>
-                                                @endforeach
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @forelse ($info['rows'] as $row)
-                                                <tr>
-                                                    @foreach ($info['columns'] as $col)
-                                                        @php($val = $row->$col ?? null)
-                                                        <td><code>{{ is_scalar($val) || $val === null ? (string) $val : json_encode($val) }}</code></td>
-                                                    @endforeach
-                                                </tr>
-                                            @empty
-                                                <tr>
-                                                    <td colspan="{{ count($info['columns']) }}" class="muted">Sin registros.</td>
-                                                </tr>
-                                            @endforelse
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                @if (((int) ($pg['pages'] ?? 1)) > 1)
-                                    <div class="pager" aria-label="Paginación {{ $label }}">
-                                        @php($otherParam = ($key === 'cl_pagosclaro') ? ($meta['param_pasarela'] ?? 'p_pasarela') : ($meta['param_claro'] ?? 'p_claro'))
-                                        @php($otherPage = ($key === 'cl_pagosclaro') ? (int) ($meta['page_pasarela'] ?? 1) : (int) ($meta['page_claro'] ?? 1))
-                                        @php($q = (string) ($meta['q'] ?? ''))
-
-                                        @for ($i = 1; $i <= ((int) ($pg['pages'] ?? 1)); $i++)
-                                            <a
-                                                href="{{ url('/dashboard/transacciones') . '?' . (($pg['param'] ?? 'p') . '=' . $i) . '&' . ($otherParam . '=' . $otherPage) . ($q !== '' ? ('&q=' . urlencode($q)) : '') }}"
-                                                class="{{ ((int) ($pg['page'] ?? 1)) === $i ? 'active' : '' }}"
-                                            >{{ $i }}</a>
-                                        @endfor
-                                    </div>
-                                @endif
-                            @endif
-                        </div>
-                    @endforeach
-
-                    @if ($activeQ !== '' && !$shownAny)
-                        <div class="placeholder" style="margin-top: 14px;">Sin resultados para la búsqueda: <code>{{ $activeQ }}</code></div>
-                    @endif
-                @endif
-            </section>
-
-            <section class="section" id="busqueda-transacciones" data-section="busqueda-transacciones" {{ (($section ?? 'principal') === 'busqueda-transacciones') ? '' : 'hidden' }}>
-                <h1>Búsqueda de transacciones</h1>
-                @php($busq = $busqueda ?? null)
-                @php($busqMeta = $busq['meta'] ?? [])
-                @php($busquedaCat = (string) ($busqMeta['cat'] ?? request()->query('cat', 'personas')))
-                @php($busquedaQ = trim((string) ($busqMeta['q'] ?? request()->query('q', ''))))
-                @php($busquedaTitles = [
-                    'personas' => 'Portal Personas',
-                    'empresas' => 'Portal Empresas',
-                    'ecommerce' => 'Portal ecommerce',
-                ])
-                @php($busquedaTitle = $busquedaTitles[$busquedaCat] ?? 'Portal Personas')
-                <div class="placeholder">
-                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                        <strong id="busquedaTitle">{{ $busquedaTitle }}</strong>
-                        <span class="pill">Cat: <code id="busquedaCatLabel">{{ $busquedaCat }}</code></span>
-                    </div>
-                    <div class="busqueda-menu" aria-label="Categorías de búsqueda">
-                        <a href="{{ url('/dashboard/busqueda-transacciones') }}?cat=personas" data-busqueda-cat="personas">Portal Personas</a>
-                        <a href="{{ url('/dashboard/busqueda-transacciones') }}?cat=empresas" data-busqueda-cat="empresas">Portal Empresas</a>
-                        <a href="{{ url('/dashboard/busqueda-transacciones') }}?cat=ecommerce" data-busqueda-cat="ecommerce">Portal ecommerce</a>
-                    </div>
-
-                    @if ($busquedaCat === 'personas')
-                        <div class="section" style="margin-top: 14px;">
-                            <div class="table-title" style="margin-bottom: 6px;">
-                                <span>Busqueda Transaccion</span>
-                            </div>
-
-                            <form class="searchbar" id="busquedaPersonasSearch" autocomplete="off">
-                                <input
-                                    type="text"
-                                    id="busquedaPersonasInput"
-                                    placeholder="Buscar por NUMERO_DOCUMENTO, EMAIL, CUS, ID_TRANSACCION"
-                                    value="{{ $busquedaQ }}"
-                                />
-                                <div class="search-actions">
-                                    <button type="button" id="busquedaPersonasClear">Limpiar búsqueda</button>
-                                    <button type="submit">Buscar</button>
-                                </div>
-                            </form>
-
-                            @php($p = $busq['personas'] ?? null)
-                            @php($perr = is_array($p) ? ($p['error'] ?? null) : null)
-                            @php($prows = is_array($p) ? ($p['rows'] ?? []) : [])
-
-                            @if ($perr)
-                                <div class="placeholder" style="margin-top: 10px;">Error ejecutando la búsqueda: <code>{{ $perr }}</code></div>
-                            @elseif (empty($prows))
-                                @if ($busquedaQ !== '')
-                                    <div class="placeholder" style="margin-top: 10px;">Sin resultados para la búsqueda: <code>{{ $busquedaQ }}</code></div>
-                                @else
-                                    <div class="placeholder" style="margin-top: 10px;">No hay registros para mostrar.</div>
-                                @endif
-                            @else
-                                <div class="table-wrap search-fit" style="margin-top: 10px;">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th><code>fecha_inicio</code></th>
-                                                <th><code>ESTADO</code></th>
-                                                <th><code>INTENTOS</code></th>
-                                                <th><code>TITULAR</code></th>
-                                                <th><code>NUMEROFACTURA</code></th>
-                                                <th><code>FECHA_TRANSACCION</code></th>
-                                                <th><code>VALOR</code></th>
-                                                <th><code>DESCRIPCION_COMPRA</code></th>
-                                                <th><code>NUMERO_DOCUMENTO</code></th>
-                                                <th><code>TELEFONO</code></th>
-                                                <th><code>EMAIL</code></th>
-                                                <th><code>CUS</code></th>
-                                                <th><code>TIPO_TRANS</code></th>
-                                                <th><code>ORIGEN_PAGO</code></th>
-                                                <th><code>FORMA_PAGO</code></th>
-                                                <th><code>CodigoCliente</code></th>
-                                                <th><code>PASA_NUMERO</code></th>
-                                                <th><code>ID_TRANSACCION</code></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach ($prows as $r)
-                                                <tr>
-                                                    <td><code>{{ (string) ($r->fecha_inicio ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->ESTADO ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->INTENTOS ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->TITULAR ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->NUMEROFACTURA ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->FECHA_TRANSACCION ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->VALOR ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->DESCRIPCION_COMPRA ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->NUMERO_DOCUMENTO ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->TELEFONO ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->EMAIL ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->CUS ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->TIPO_TRANS ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->ORIGEN_PAGO ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->FORMA_PAGO ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->CodigoCliente ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->PASA_NUMERO ?? '') }}</code></td>
-                                                    <td><code>{{ (string) ($r->ID_TRANSACCION ?? '') }}</code></td>
-                                                </tr>
-                                            @endforeach
-                                        </tbody>
-                                    </table>
-                                </div>
-                            @endif
-                        </div>
-                    @else
-                        <div class="muted" id="busquedaMsg">Se estará agregando información muy pronto.</div>
-                    @endif
-                </div>
-            </section>
-
-            <section class="section" id="monitoreo" data-section="monitoreo" {{ (($section ?? 'principal') === 'monitoreo') ? '' : 'hidden' }}>
-                <h1>Monitoreo</h1>
-            </section>
-
-            <section class="section" id="estadisticas" data-section="estadisticas" {{ (($section ?? 'principal') === 'estadisticas') ? '' : 'hidden' }}>
-                <h1>Estadísticas</h1>
-                <div class="placeholder">Sección en construcción.</div>
-            </section>
-
-            <section class="section" id="conexionBD" data-section="conexionBD" {{ (($section ?? 'principal') === 'conexionBD') ? '' : 'hidden' }}>
-                <h1>Conexión base de datos</h1>
-                <div class="grid">
-                    <div class="card half">
-                        <h2>Aplicación</h2>
-                        <div class="kv">
-                            <div class="k">Entorno</div><div class="v"><code>{{ $app['env'] ?? '' }}</code></div>
-                            <div class="k">Debug</div><div class="v"><code>{{ !empty($app['debug']) ? 'true' : 'false' }}</code></div>
-                            <div class="k">APP_URL</div><div class="v"><code>{{ $app['url'] ?? '' }}</code></div>
-                            <div class="k">Locale</div><div class="v"><code>{{ $app['locale'] ?? '' }}</code></div>
-                            <div class="k">Laravel</div><div class="v"><code>{{ $app['laravel_version'] ?? '' }}</code></div>
-                            <div class="k">PHP</div><div class="v"><code>{{ $app['php_version'] ?? '' }}</code></div>
-                        </div>
-                    </div>
-
-                    <div class="card half">
-                        <h2>Runtime</h2>
-                        <div class="kv">
-                            <div class="k">Server</div><div class="v"><code>{{ $runtime['server_software'] ?? 'N/A' }}</code></div>
-                            <div class="k">Memoria (uso)</div><div class="v"><code>{{ $runtime['memory_usage_mb'] ?? '' }} MB</code></div>
-                            <div class="k">Memoria (pico)</div><div class="v"><code>{{ $runtime['peak_memory_mb'] ?? '' }} MB</code></div>
-                            <div class="k">memory_limit</div><div class="v"><code>{{ $app['memory_limit'] ?? '' }}</code></div>
-                            <div class="k">max_execution_time</div><div class="v"><code>{{ $app['max_execution_time'] ?? '' }}</code></div>
-                        </div>
-                        <div class="muted">Tip: si esta página carga lento, revisa DB/cache primero.</div>
-                    </div>
-
-                    <div class="card third">
-                        <h2>Base de Datos</h2>
-                        <div class="kv">
-                            <div class="k">Conexión</div><div class="v"><code>{{ $db['connection'] ?? '' }}</code></div>
-                            <div class="k">Host</div><div class="v"><code>{{ $db['host'] ?? '' }}</code></div>
-                            <div class="k">Database</div><div class="v"><code>{{ $db['database'] ?? '' }}</code></div>
-                            <div class="k">Estado</div>
-                            <div class="v">
-                                <span class="badge">
-                                    <span class="dot {{ ($db['status'] ?? 'unknown') === 'ok' ? 'ok' : 'fail' }}"></span>
-                                    <code>{{ strtoupper($db['status'] ?? 'unknown') }}</code>
-                                </span>
-                            </div>
-                            <div class="k">Latencia</div><div class="v"><code>{{ $db['latency_ms'] !== null ? $db['latency_ms'].' ms' : 'N/A' }}</code></div>
-                            <div class="k">Migrations</div><div class="v"><code>{{ $db['migrations_table'] ?? 'N/A' }}</code></div>
-                        </div>
-                        @if (!empty($db['error']))
-                            <div class="muted">Error: <code>{{ $db['error'] }}</code></div>
-                        @endif
-                    </div>
-
-                    <div class="card third">
-                        <h2>Cache</h2>
-                        <div class="kv">
-                            <div class="k">Driver</div><div class="v"><code>{{ $cache['driver'] ?? '' }}</code></div>
-                            <div class="k">Estado</div>
-                            <div class="v">
-                                <span class="badge">
-                                    <span class="dot {{ ($cache['status'] ?? 'unknown') === 'ok' ? 'ok' : 'fail' }}"></span>
-                                    <code>{{ strtoupper($cache['status'] ?? 'unknown') }}</code>
-                                </span>
-                            </div>
-                        </div>
-                        @if (!empty($cache['error']))
-                            <div class="muted">Error: <code>{{ $cache['error'] }}</code></div>
-                        @endif
-                    </div>
-
-                    <div class="card third">
-                        <h2>Storage</h2>
-                        <div class="kv">
-                            <div class="k">storage/</div>
-                            <div class="v">
-                                <span class="badge">
-                                    <span class="dot {{ !empty($storage['writable']) ? 'ok' : 'fail' }}"></span>
-                                    <code>{{ !empty($storage['writable']) ? 'WRITABLE' : 'NOT WRITABLE' }}</code>
-                                </span>
-                            </div>
-                            <div class="k">framework/cache</div>
-                            <div class="v">
-                                <span class="badge">
-                                    <span class="dot {{ !empty($storage['framework_cache_writable']) ? 'ok' : 'warn' }}"></span>
-                                    <code>{{ !empty($storage['framework_cache_writable']) ? 'WRITABLE' : 'CHECK' }}</code>
-                                </span>
-                            </div>
-                            <div class="k">logs/</div>
-                            <div class="v">
-                                <span class="badge">
-                                    <span class="dot {{ !empty($storage['logs_writable']) ? 'ok' : 'warn' }}"></span>
-                                    <code>{{ !empty($storage['logs_writable']) ? 'WRITABLE' : 'CHECK' }}</code>
-                                </span>
-                            </div>
-                        </div>
-                        <div class="muted"><code>{{ $storage['storage_path'] ?? '' }}</code></div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="section" id="usuarios" data-section="usuarios" {{ (($section ?? 'principal') === 'usuarios') ? '' : 'hidden' }}>
-                <h1>Usuarios</h1>
-                <div class="placeholder">Sección en construcción.</div>
-            </section>
+            @include('dashboard.sections.principal')
+            @include('dashboard.sections.inicio')
+            @include('dashboard.sections.transacciones')
+            @include('dashboard.sections.busqueda-transacciones')
+            @include('dashboard.sections.monitoreo')
+            @include('dashboard.sections.estadisticas')
+            @include('dashboard.sections.conexionBD')
+            @include('dashboard.sections.usuarios')
 
             <div class="footer">
                 Ruta: <code>/dashboard</code> · Usa el menú para navegar.
@@ -1095,7 +789,7 @@
             var parts = (pathname || '').split('/').filter(Boolean);
             // /dashboard/{section}
             if (parts[0] !== 'dashboard') return null;
-            return parts[1] || 'principal';
+            return parts[1] || 'inicio';
         }
 
         function navigateTo(key, push) {
@@ -1181,7 +875,7 @@
 
             showSection(key);
             if (push) {
-                var nextUrl = key === 'principal' ? '/dashboard' : '/dashboard/' + key;
+                var nextUrl = key === 'inicio' ? '/dashboard' : '/dashboard/' + key;
                 if (key === 'busqueda-transacciones') {
                     nextUrl += '?cat=' + encodeURIComponent(busquedaState.cat || 'personas');
                 }
@@ -1242,13 +936,13 @@
         });
 
         window.addEventListener('popstate', function () {
-            var key = (history.state && history.state.section) || sectionFromPath(location.pathname) || 'principal';
+            var key = (history.state && history.state.section) || sectionFromPath(location.pathname) || 'inicio';
             updateBusquedaStateFromUrl(location.href);
             navigateTo(key, false);
         });
 
         // Ensure the correct section is visible on first load.
-        var initialSection = sectionFromPath(location.pathname) || 'principal';
+        var initialSection = sectionFromPath(location.pathname) || 'inicio';
         updateTransStateFromUrl(location.href);
         updateBusquedaStateFromUrl(location.href);
         navigateTo(initialSection, false);
@@ -1403,13 +1097,93 @@
 
             e.preventDefault();
 
-            var input = document.getElementById('busquedaPersonasInput');
-            if (input) input.value = '';
-
+            // Keep menu + accordion visible; just clear current query/results.
             busquedaState.cat = 'personas';
             busquedaState.q = '';
-            navigateTo('busqueda-transacciones', true);
+            replaceBusquedaUrlNoQuery();
+
+            var input = document.getElementById('busquedaPersonasInput');
+            if (input) {
+                input.value = '';
+                try { input.focus(); } catch (e2) {}
+            }
+
+            var results = document.getElementById('busquedaPersonasResults');
+            if (results) {
+                results.innerHTML = '<div class="placeholder" style="margin-top: 10px;">No hay registros para mostrar.</div>';
+            }
         });
+
+        function replaceBusquedaUrlNoQuery() {
+            try {
+                var cat = busquedaState.cat || 'personas';
+                var next = '/dashboard/busqueda-transacciones?cat=' + encodeURIComponent(cat);
+                history.replaceState({ section: 'busqueda-transacciones' }, '', next);
+            } catch (e) {}
+        }
+
+        // Accordion open/close for Consulta 1 (and future queries)
+        document.addEventListener('click', function (e) {
+            var btnAcc = e.target && e.target.closest ? e.target.closest('button[data-accordion-action][data-accordion-target]') : null;
+            if (!btnAcc) return;
+
+            var section = document.querySelector('[data-section="busqueda-transacciones"]');
+            if (!section || section.hidden) return;
+            if (!section.contains(btnAcc)) return;
+
+            e.preventDefault();
+
+            var action = btnAcc.getAttribute('data-accordion-action');
+            var targetId = btnAcc.getAttribute('data-accordion-target');
+            if (!targetId) return;
+
+            var body = document.getElementById(targetId);
+            if (!body) return;
+
+            var card = body.closest ? body.closest('.consulta-card') : null;
+
+            var submitId = btnAcc.getAttribute('data-accordion-submit');
+            var inputId = btnAcc.getAttribute('data-accordion-input');
+            var resultsId = btnAcc.getAttribute('data-accordion-results');
+
+            var submitBtn = submitId ? document.getElementById(submitId) : null;
+            var inputEl = inputId ? document.getElementById(inputId) : null;
+            var resultsEl = resultsId ? document.getElementById(resultsId) : null;
+
+            var openBtn = body ? body.closest('.card')?.querySelector('button[data-accordion-action="open"][data-accordion-target="' + targetId + '"]') : null;
+            var closeBtn = body ? body.closest('.card')?.querySelector('button[data-accordion-action="close"][data-accordion-target="' + targetId + '"]') : null;
+
+            if (action === 'open') {
+                body.hidden = false;
+                if (submitBtn) submitBtn.disabled = false;
+                if (openBtn) openBtn.hidden = true;
+                if (closeBtn) closeBtn.hidden = false;
+                if (card) card.classList.add('consulta-expanded');
+                if (inputEl) {
+                    try { inputEl.focus(); } catch (e2) {}
+                }
+                return;
+            }
+
+            if (action === 'close') {
+                body.hidden = true;
+                if (submitBtn) submitBtn.disabled = true;
+                if (closeBtn) closeBtn.hidden = true;
+                if (openBtn) openBtn.hidden = false;
+                if (card) card.classList.remove('consulta-expanded');
+
+                if (inputEl) inputEl.value = '';
+                if (resultsEl) resultsEl.innerHTML = '';
+
+                // Clear query in state + URL only when closing Consulta 1.
+                if (btnAcc.getAttribute('data-accordion-clear-busqueda-q') === '1') {
+                    busquedaState.q = '';
+                    replaceBusquedaUrlNoQuery();
+                }
+                return;
+            }
+        });
+
     })();
 </script>
 </body>

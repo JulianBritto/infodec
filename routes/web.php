@@ -91,8 +91,8 @@ $getMonitoringSnapshot = function (): array {
 };
 
 Route::get('/dashboard/{section?}', function (?string $section = null) use ($getMonitoringSnapshot) {
-    // /dashboard (sin sección) => vista principal (introducción)
-    $section = $section ?: 'principal';
+    // /dashboard (sin sección) => vista de inicio
+    $section = $section ?: 'inicio';
     if (!in_array($section, ['principal', 'inicio', 'transacciones', 'busqueda-transacciones', 'monitoreo', 'estadisticas', 'usuarios', 'conexionBD'], true)) {
         abort(404);
     }
@@ -119,6 +119,11 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
 
         if ($cat === 'personas') {
             try {
+                // Only execute the expensive query when the user actually submits a search.
+                if ($q === '') {
+                    $data['busqueda']['personas']['rows'] = [];
+                    $data['busqueda']['personas']['error'] = null;
+                } else {
                 $requiredTables = ['gt_pago_pasarela', 'cl_pagosclaro', 'gt_valores'];
                 foreach ($requiredTables as $tName) {
                     if (!Schema::hasTable($tName)) {
@@ -182,6 +187,7 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
 
                 $rows = $query->limit(50)->get();
                 $data['busqueda']['personas']['rows'] = $rows;
+                }
             } catch (Throwable $e) {
                 $data['busqueda']['personas']['error'] = $e->getMessage();
                 $data['busqueda']['personas']['rows'] = [];
@@ -223,11 +229,11 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
             ];
 
             foreach ($tableConfigs as $cfg) {
-                if (!Schema::hasTable($cfg['name'])) {
-                    continue;
-                }
-
                 try {
+                    if (!Schema::hasTable($cfg['name'])) {
+                        continue;
+                    }
+
                     $cols = Schema::getColumnListing($cfg['name']);
                     if (!in_array($cfg['id_col'], $cols, true)) {
                         continue;
@@ -267,25 +273,25 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
         }
 
         $fetchTable = function (string $tableName, int $page, int $offset, string $param) use ($perPage, $pages, $search, $linkedSearchIds): array {
-            if (!Schema::hasTable($tableName)) {
-                return [
-                    'table' => $tableName,
-                    'exists' => false,
-                    'columns' => [],
-                    'rows' => [],
-                    'total' => 0,
-                    'error' => null,
-                    'search_applies' => false,
-                    'pagination' => [
-                        'page' => $page,
-                        'per_page' => $perPage,
-                        'pages' => $pages,
-                        'param' => $param,
-                    ],
-                ];
-            }
-
             try {
+                if (!Schema::hasTable($tableName)) {
+                    return [
+                        'table' => $tableName,
+                        'exists' => false,
+                        'columns' => [],
+                        'rows' => [],
+                        'total' => 0,
+                        'error' => null,
+                        'search_applies' => false,
+                        'pagination' => [
+                            'page' => $page,
+                            'per_page' => $perPage,
+                            'pages' => $pages,
+                            'param' => $param,
+                        ],
+                    ];
+                }
+
                 $columns = Schema::getColumnListing($tableName);
 
                 $idCol = null;
@@ -319,12 +325,9 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
                     $query->orderByDesc($orderColumn);
                 }
 
-                $total = (clone $query)->count();
+                // NOTE: Evitamos COUNT() porque puede ser muy costoso en tablas grandes.
+                // Para este dashboard usamos paginación fija y cargamos solo la página actual.
                 $effectivePages = $pages;
-                if ($search !== '') {
-                    $effectivePages = (int) max(1, min($pages, (int) ceil($total / $perPage)));
-                }
-
                 $effectivePage = $page;
                 if ($effectivePage < 1) {
                     $effectivePage = 1;
@@ -341,7 +344,7 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
                     'exists' => true,
                     'columns' => $columns,
                     'rows' => $rows,
-                    'total' => (int) $total,
+                    'total' => 0,
                     'error' => null,
                     'search_applies' => $search === '' ? true : ($idCol !== null && is_array($linkedSearchIds) && !empty($linkedSearchIds)),
                     'pagination' => [
@@ -354,7 +357,7 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
             } catch (Throwable $e) {
                 return [
                     'table' => $tableName,
-                    'exists' => true,
+                    'exists' => false,
                     'columns' => [],
                     'rows' => [],
                     'total' => 0,
