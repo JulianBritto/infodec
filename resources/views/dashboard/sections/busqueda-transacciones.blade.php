@@ -25,6 +25,7 @@
             @php($p = $busq['personas'] ?? null)
             @php($perr = is_array($p) ? ($p['error'] ?? null) : null)
             @php($prows = is_array($p) ? ($p['rows'] ?? []) : [])
+            @php($ptime = is_array($p) ? ($p['time_ms'] ?? null) : null)
             @php($consulta1Open = ($busquedaQ !== ''))
 
             <div class="consulta-grid">
@@ -34,6 +35,11 @@
                             <span>Búsqueda de transacciones (Consulta 1)</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:8px;">
+                            @if ($busquedaQ !== '' && $ptime !== null)
+                                <span class="pill" title="Tiempo de respuesta del query">
+                                    Tiempo: <code>{{ (int) $ptime }} ms</code>
+                                </span>
+                            @endif
                             <button
                                 type="button"
                                 class="acc-btn"
@@ -168,6 +174,338 @@
                             </div>
                         </div>
                         <div class="muted">Query pendiente. Aquí irá una consulta diferente para el Portal Personas.</div>
+
+                        <div id="{{ $bodyId }}" style="margin-top: 12px;" hidden>
+                            <form class="searchbar" autocomplete="off" onsubmit="return false;">
+                                <input id="{{ $inputId }}" type="text" placeholder="Pendiente: define el query para habilitar esta consulta" disabled />
+                                <div class="search-actions">
+                                    <button type="button" disabled>Ejecutar query</button>
+                                </div>
+                            </form>
+                            <div class="placeholder" style="margin-top: 10px;">Pendiente por definir el query (te lo armo cuando me lo pases).</div>
+                        </div>
+                    </div>
+                @endfor
+            </div>
+        @elseif ($busquedaCat === 'empresas')
+            @php($p = $busq['empresas'] ?? null)
+            @php($perr = is_array($p) ? ($p['error'] ?? null) : null)
+            @php($prows = is_array($p) ? ($p['rows'] ?? []) : [])
+            @php($ptime = is_array($p) ? ($p['time_ms'] ?? null) : null)
+            @php($consulta1Open = ($busquedaQ !== ''))
+
+            <div class="consulta-grid">
+                <div class="card consulta-card {{ $consulta1Open ? 'consulta-expanded' : '' }}">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                        <div class="table-title" style="margin-bottom: 6px;">
+                            <span>Búsqueda de transacciones (Consulta 1)</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            @if ($busquedaQ !== '' && $ptime !== null)
+                                <span class="pill" title="Tiempo de respuesta del query">
+                                    Tiempo: <code>{{ (int) $ptime }} ms</code>
+                                </span>
+                            @endif
+                            <button
+                                type="button"
+                                class="acc-btn"
+                                data-accordion-action="open"
+                                data-accordion-target="busquedaEmpresasQueryBody"
+                                data-accordion-submit="busquedaEmpresasSubmit"
+                                data-accordion-input="busquedaEmpresasInput"
+                                {{ $consulta1Open ? 'hidden' : '' }}
+                            >Hacer búsqueda</button>
+                            <button
+                                type="button"
+                                class="acc-btn"
+                                aria-label="Ocultar consulta"
+                                title="Ocultar"
+                                data-accordion-action="close"
+                                data-accordion-target="busquedaEmpresasQueryBody"
+                                data-accordion-submit="busquedaEmpresasSubmit"
+                                data-accordion-input="busquedaEmpresasInput"
+                                data-accordion-results="busquedaEmpresasResults"
+                                data-accordion-clear-busqueda-q="1"
+                                {{ $consulta1Open ? '' : 'hidden' }}
+                            >▴</button>
+                        </div>
+                    </div>
+                    <div class="muted">Query para buscar transacciones con un detallado resumido para el cliente.</div>
+
+                    <div id="busquedaEmpresasQueryBody" style="margin-top: 12px;" {{ $consulta1Open ? '' : 'hidden' }}>
+                        <form class="searchbar" id="busquedaEmpresasSearch" autocomplete="off">
+                            <input
+                                type="text"
+                                id="busquedaEmpresasInput"
+                                placeholder="Buscar por NUMERO_DOCUMENTO, EMAIL, CUS, ID_TRANSACCION"
+                                value="{{ $busquedaQ }}"
+                            />
+                            <div class="search-actions">
+                                <button type="button" id="busquedaEmpresasClear">Limpiar búsqueda</button>
+                                <button type="submit" id="busquedaEmpresasSubmit" {{ $consulta1Open ? '' : 'disabled' }}>Ejecutar query</button>
+                            </div>
+                        </form>
+
+                        <div id="busquedaEmpresasResults">
+                            @if ($perr)
+                                <div class="placeholder" style="margin-top: 10px;">Error ejecutando la búsqueda: <code>{{ $perr }}</code></div>
+                            @elseif (empty($prows))
+                                @if ($busquedaQ !== '')
+                                    <div class="placeholder" style="margin-top: 10px;">Sin resultados para la búsqueda: <code>{{ $busquedaQ }}</code></div>
+                                @else
+                                    <div class="placeholder" style="margin-top: 10px;">No hay registros para mostrar.</div>
+                                @endif
+                            @else
+                                <div class="table-wrap search-fit" style="margin-top: 10px;">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th><code>fecha_inicio</code></th>
+                                                <th><code>ESTADO</code></th>
+                                                <th><code>INTENTOS</code></th>
+                                                <th><code>TITULAR</code></th>
+                                                <th><code>NUMEROFACTURA</code></th>
+                                                <th><code>FECHA_TRANSACCION</code></th>
+                                                <th><code>VALOR</code></th>
+                                                <th><code>DESCRIPCION_COMPRA</code></th>
+                                                <th><code>NUMERO_DOCUMENTO</code></th>
+                                                <th><code>TELEFONO</code></th>
+                                                <th><code>EMAIL</code></th>
+                                                <th><code>CUS</code></th>
+                                                <th><code>TIPO_TRANS</code></th>
+                                                <th><code>ORIGEN_PAGO</code></th>
+                                                <th><code>FORMA_PAGO</code></th>
+                                                <th><code>CodigoCliente</code></th>
+                                                <th><code>PASA_NUMERO</code></th>
+                                                <th><code>ID_TRANSACCION</code></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($prows as $r)
+                                                <tr>
+                                                    <td><code>{{ (string) ($r->fecha_inicio ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ESTADO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->INTENTOS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TITULAR ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->NUMEROFACTURA ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->FECHA_TRANSACCION ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->VALOR ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->DESCRIPCION_COMPRA ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->NUMERO_DOCUMENTO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TELEFONO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->EMAIL ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->CUS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TIPO_TRANS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ORIGEN_PAGO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->FORMA_PAGO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->CodigoCliente ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->PASA_NUMERO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ID_TRANSACCION ?? '') }}</code></td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
+                @for ($i = 2; $i <= 8; $i++)
+                    @php($bodyId = 'busquedaEmpresasConsulta' . $i . 'Body')
+                    @php($inputId = 'busquedaEmpresasConsulta' . $i . 'Input')
+                    <div class="card consulta-card">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                            <div class="table-title" style="margin-bottom: 6px;">
+                                <span>Búsqueda de transacciones (Consulta {{ $i }})</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <button
+                                    type="button"
+                                    class="acc-btn"
+                                    data-accordion-action="open"
+                                    data-accordion-target="{{ $bodyId }}"
+                                    data-accordion-input="{{ $inputId }}"
+                                >Hacer búsqueda</button>
+                                <button
+                                    type="button"
+                                    class="acc-btn"
+                                    aria-label="Ocultar consulta"
+                                    title="Ocultar"
+                                    data-accordion-action="close"
+                                    data-accordion-target="{{ $bodyId }}"
+                                    data-accordion-input="{{ $inputId }}"
+                                    hidden
+                                >▴</button>
+                            </div>
+                        </div>
+                        <div class="muted">Query pendiente. Aquí irá una consulta diferente para el Portal Empresas.</div>
+
+                        <div id="{{ $bodyId }}" style="margin-top: 12px;" hidden>
+                            <form class="searchbar" autocomplete="off" onsubmit="return false;">
+                                <input id="{{ $inputId }}" type="text" placeholder="Pendiente: define el query para habilitar esta consulta" disabled />
+                                <div class="search-actions">
+                                    <button type="button" disabled>Ejecutar query</button>
+                                </div>
+                            </form>
+                            <div class="placeholder" style="margin-top: 10px;">Pendiente por definir el query (te lo armo cuando me lo pases).</div>
+                        </div>
+                    </div>
+                @endfor
+            </div>
+        @elseif ($busquedaCat === 'ecommerce')
+            @php($p = $busq['ecommerce'] ?? null)
+            @php($perr = is_array($p) ? ($p['error'] ?? null) : null)
+            @php($prows = is_array($p) ? ($p['rows'] ?? []) : [])
+            @php($ptime = is_array($p) ? ($p['time_ms'] ?? null) : null)
+            @php($consulta1Open = ($busquedaQ !== ''))
+
+            <div class="consulta-grid">
+                <div class="card consulta-card {{ $consulta1Open ? 'consulta-expanded' : '' }}">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                        <div class="table-title" style="margin-bottom: 6px;">
+                            <span>Búsqueda de transacciones (Consulta 1)</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            @if ($busquedaQ !== '' && $ptime !== null)
+                                <span class="pill" title="Tiempo de respuesta del query">
+                                    Tiempo: <code>{{ (int) $ptime }} ms</code>
+                                </span>
+                            @endif
+                            <button
+                                type="button"
+                                class="acc-btn"
+                                data-accordion-action="open"
+                                data-accordion-target="busquedaEcommerceQueryBody"
+                                data-accordion-submit="busquedaEcommerceSubmit"
+                                data-accordion-input="busquedaEcommerceInput"
+                                {{ $consulta1Open ? 'hidden' : '' }}
+                            >Hacer búsqueda</button>
+                            <button
+                                type="button"
+                                class="acc-btn"
+                                aria-label="Ocultar consulta"
+                                title="Ocultar"
+                                data-accordion-action="close"
+                                data-accordion-target="busquedaEcommerceQueryBody"
+                                data-accordion-submit="busquedaEcommerceSubmit"
+                                data-accordion-input="busquedaEcommerceInput"
+                                data-accordion-results="busquedaEcommerceResults"
+                                data-accordion-clear-busqueda-q="1"
+                                {{ $consulta1Open ? '' : 'hidden' }}
+                            >▴</button>
+                        </div>
+                    </div>
+                    <div class="muted">Query para buscar transacciones con un detallado resumido para el cliente.</div>
+
+                    <div id="busquedaEcommerceQueryBody" style="margin-top: 12px;" {{ $consulta1Open ? '' : 'hidden' }}>
+                        <form class="searchbar" id="busquedaEcommerceSearch" autocomplete="off">
+                            <input
+                                type="text"
+                                id="busquedaEcommerceInput"
+                                placeholder="Buscar por NUMERO_DOCUMENTO, EMAIL, CUS, ID_TRANSACCION"
+                                value="{{ $busquedaQ }}"
+                            />
+                            <div class="search-actions">
+                                <button type="button" id="busquedaEcommerceClear">Limpiar búsqueda</button>
+                                <button type="submit" id="busquedaEcommerceSubmit" {{ $consulta1Open ? '' : 'disabled' }}>Ejecutar query</button>
+                            </div>
+                        </form>
+
+                        <div id="busquedaEcommerceResults">
+                            @if ($perr)
+                                <div class="placeholder" style="margin-top: 10px;">Error ejecutando la búsqueda: <code>{{ $perr }}</code></div>
+                            @elseif (empty($prows))
+                                @if ($busquedaQ !== '')
+                                    <div class="placeholder" style="margin-top: 10px;">Sin resultados para la búsqueda: <code>{{ $busquedaQ }}</code></div>
+                                @else
+                                    <div class="placeholder" style="margin-top: 10px;">No hay registros para mostrar.</div>
+                                @endif
+                            @else
+                                <div class="table-wrap search-fit" style="margin-top: 10px;">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th><code>fecha_inicio</code></th>
+                                                <th><code>ESTADO</code></th>
+                                                <th><code>INTENTOS</code></th>
+                                                <th><code>TITULAR</code></th>
+                                                <th><code>NUMEROFACTURA</code></th>
+                                                <th><code>FECHA_TRANSACCION</code></th>
+                                                <th><code>VALOR</code></th>
+                                                <th><code>DESCRIPCION_COMPRA</code></th>
+                                                <th><code>NUMERO_DOCUMENTO</code></th>
+                                                <th><code>TELEFONO</code></th>
+                                                <th><code>EMAIL</code></th>
+                                                <th><code>CUS</code></th>
+                                                <th><code>TIPO_TRANS</code></th>
+                                                <th><code>ORIGEN_PAGO</code></th>
+                                                <th><code>FORMA_PAGO</code></th>
+                                                <th><code>CodigoCliente</code></th>
+                                                <th><code>PASA_NUMERO</code></th>
+                                                <th><code>ID_TRANSACCION</code></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($prows as $r)
+                                                <tr>
+                                                    <td><code>{{ (string) ($r->fecha_inicio ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ESTADO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->INTENTOS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TITULAR ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->NUMEROFACTURA ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->FECHA_TRANSACCION ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->VALOR ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->DESCRIPCION_COMPRA ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->NUMERO_DOCUMENTO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TELEFONO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->EMAIL ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->CUS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->TIPO_TRANS ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ORIGEN_PAGO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->FORMA_PAGO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->CodigoCliente ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->PASA_NUMERO ?? '') }}</code></td>
+                                                    <td><code>{{ (string) ($r->ID_TRANSACCION ?? '') }}</code></td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
+                @for ($i = 2; $i <= 8; $i++)
+                    @php($bodyId = 'busquedaEcommerceConsulta' . $i . 'Body')
+                    @php($inputId = 'busquedaEcommerceConsulta' . $i . 'Input')
+                    <div class="card consulta-card">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                            <div class="table-title" style="margin-bottom: 6px;">
+                                <span>Búsqueda de transacciones (Consulta {{ $i }})</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <button
+                                    type="button"
+                                    class="acc-btn"
+                                    data-accordion-action="open"
+                                    data-accordion-target="{{ $bodyId }}"
+                                    data-accordion-input="{{ $inputId }}"
+                                >Hacer búsqueda</button>
+                                <button
+                                    type="button"
+                                    class="acc-btn"
+                                    aria-label="Ocultar consulta"
+                                    title="Ocultar"
+                                    data-accordion-action="close"
+                                    data-accordion-target="{{ $bodyId }}"
+                                    data-accordion-input="{{ $inputId }}"
+                                    hidden
+                                >▴</button>
+                            </div>
+                        </div>
+                        <div class="muted">Query pendiente. Aquí irá una consulta diferente para el Portal ecommerce.</div>
 
                         <div id="{{ $bodyId }}" style="margin-top: 12px;" hidden>
                             <form class="searchbar" autocomplete="off" onsubmit="return false;">

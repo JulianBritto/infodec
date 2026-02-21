@@ -58,9 +58,38 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
+            'options' => extension_loaded('pdo_mysql') ? (function () {
+                $options = [];
+
+                $sslCa = env('MYSQL_ATTR_SSL_CA');
+                if ($sslCa !== null && $sslCa !== '') {
+                    $options[\PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+                }
+
+                // Generic PDO timeout (some drivers use it for network operations)
+                $pdoTimeout = env('DB_PDO_TIMEOUT');
+                if ($pdoTimeout !== null && $pdoTimeout !== '') {
+                    $options[\PDO::ATTR_TIMEOUT] = (int) $pdoTimeout;
+                }
+
+                // MySQL-specific timeouts (if supported by the installed PDO MySQL driver)
+                $connectTimeout = env('DB_CONNECT_TIMEOUT');
+                if (defined('PDO::MYSQL_ATTR_CONNECT_TIMEOUT') && $connectTimeout !== null && $connectTimeout !== '') {
+                    $options[\PDO::MYSQL_ATTR_CONNECT_TIMEOUT] = (int) $connectTimeout;
+                }
+
+                $readTimeout = env('DB_READ_TIMEOUT');
+                if (defined('PDO::MYSQL_ATTR_READ_TIMEOUT') && $readTimeout !== null && $readTimeout !== '') {
+                    $options[\PDO::MYSQL_ATTR_READ_TIMEOUT] = (int) $readTimeout;
+                }
+
+                $writeTimeout = env('DB_WRITE_TIMEOUT');
+                if (defined('PDO::MYSQL_ATTR_WRITE_TIMEOUT') && $writeTimeout !== null && $writeTimeout !== '') {
+                    $options[\PDO::MYSQL_ATTR_WRITE_TIMEOUT] = (int) $writeTimeout;
+                }
+
+                return $options;
+            })() : [],
         ],
 
         'pgsql' => [

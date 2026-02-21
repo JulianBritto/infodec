@@ -1,5 +1,6 @@
 <section class="section" id="inicio" data-section="inicio" {{ (($section ?? 'principal') === 'inicio') ? '' : 'hidden' }}>
     <h1>Inicio</h1>
+    
     <div class="grid">
         @php($dbOk = (($db['status'] ?? 'unknown') === 'ok'))
         @php($cacheOk = (($cache['status'] ?? 'unknown') === 'ok'))

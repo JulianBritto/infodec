@@ -34,7 +34,7 @@
                 <div class="k">Estado</div>
                 <div class="v">
                     <span class="badge">
-                        <span class="dot {{ ($db['status'] ?? 'unknown') === 'ok' ? 'ok' : 'fail' }}"></span>
+                        <span class="dot {{ ($db['status'] ?? 'unknown') === 'ok' ? 'ok' : ((($db['status'] ?? 'unknown') === 'skipped') ? 'warn' : 'fail') }}"></span>
                         <code>{{ strtoupper($db['status'] ?? 'unknown') }}</code>
                     </span>
                 </div>
@@ -53,7 +53,7 @@
                 <div class="k">Estado</div>
                 <div class="v">
                     <span class="badge">
-                        <span class="dot {{ ($cache['status'] ?? 'unknown') === 'ok' ? 'ok' : 'fail' }}"></span>
+                        <span class="dot {{ ($cache['status'] ?? 'unknown') === 'ok' ? 'ok' : ((($cache['status'] ?? 'unknown') === 'skipped') ? 'warn' : 'fail') }}"></span>
                         <code>{{ strtoupper($cache['status'] ?? 'unknown') }}</code>
                     </span>
                 </div>

@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use App\Models\QueryExecutionLog;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,7 +21,7 @@ Route::get('/', function () {
     return redirect('/dashboard');
 });
 
-$getMonitoringSnapshot = function (): array {
+$getMonitoringSnapshot = function (bool $probeDb = true, bool $probeCache = true, ?callable $withQueryGroup = null): array {
     $now = now();
 
     $app = [
@@ -42,36 +43,90 @@ $getMonitoringSnapshot = function (): array {
         'connection' => $defaultConnection,
         'database' => (string) config('database.connections.' . $defaultConnection . '.database'),
         'host' => (string) config('database.connections.' . $defaultConnection . '.host'),
-        'status' => 'unknown',
+        'status' => $probeDb ? 'unknown' : 'skipped',
         'latency_ms' => null,
         'error' => null,
         'migrations_table' => null,
     ];
 
-    try {
-        $start = microtime(true);
-        DB::connection()->getPdo();
-        $db['latency_ms'] = (int) round((microtime(true) - $start) * 1000);
-        $db['status'] = 'ok';
-        $db['migrations_table'] = Schema::hasTable('migrations') ? 'present' : 'missing';
-    } catch (Throwable $e) {
-        $db['status'] = 'fail';
-        $db['error'] = $e->getMessage();
+    if ($probeDb) {
+        try {
+            $dbProbeTtl = (int) env('DASHBOARD_DB_PROBE_TTL', 5);
+            if ($dbProbeTtl < 1) {
+                $dbProbeTtl = 1;
+            }
+
+            $dbProbeKey = 'dashboard:db_probe:' . $defaultConnection . ':' . ($db['database'] ?? '');
+
+            $runDbProbe = function () use ($defaultConnection) {
+                $start = microtime(true);
+
+                // Lightweight probe: one roundtrip, avoids schema checks and reconnect/purge.
+                DB::connection($defaultConnection)->select('select 1');
+
+                $latencyMs = (int) round((microtime(true) - $start) * 1000);
+                if ($latencyMs < 0) {
+                    $latencyMs = 0;
+                }
+
+                return [
+                    'status' => 'ok',
+                    'latency_ms' => $latencyMs,
+                    'error' => null,
+                    'migrations_table' => null,
+                ];
+            };
+
+            $probeResult = null;
+            try {
+                $probeResult = Cache::remember($dbProbeKey, $dbProbeTtl, $runDbProbe);
+            } catch (Throwable $e) {
+                $probeResult = $runDbProbe();
+            }
+
+            if (is_array($probeResult)) {
+                $db['status'] = (string) ($probeResult['status'] ?? $db['status']);
+                $db['latency_ms'] = $probeResult['latency_ms'] ?? $db['latency_ms'];
+                $db['error'] = $probeResult['error'] ?? $db['error'];
+                $db['migrations_table'] = $probeResult['migrations_table'] ?? $db['migrations_table'];
+            }
+
+        } catch (Throwable $e) {
+            $db['status'] = 'fail';
+            $db['error'] = $e->getMessage();
+        }
     }
 
     $cache = [
         'driver' => (string) config('cache.default'),
-        'status' => 'unknown',
+        'status' => $probeCache ? 'unknown' : 'skipped',
         'error' => null,
     ];
 
-    try {
-        $probeKey = 'dashboard_probe';
-        Cache::put($probeKey, 'ok', 10);
-        $cache['status'] = Cache::get($probeKey) === 'ok' ? 'ok' : 'fail';
-    } catch (Throwable $e) {
-        $cache['status'] = 'fail';
-        $cache['error'] = $e->getMessage();
+    if ($probeCache) {
+        try {
+            $probeKey = 'dashboard_probe';
+            $ttl = (int) env('DASHBOARD_PROBE_TTL', 10);
+            if ($ttl < 3) {
+                $ttl = 3;
+            }
+
+            // Usar remember para evitar escrituras constantes en cache file.
+            $cacheProbe = function () use ($probeKey, $ttl) {
+                return Cache::remember($probeKey, $ttl, function () {
+                    return 'ok';
+                });
+            };
+
+            $val = is_callable($withQueryGroup)
+                ? $withQueryGroup('dashboard|snapshot|cache_probe', $cacheProbe)
+                : $cacheProbe();
+
+            $cache['status'] = $val === 'ok' ? 'ok' : 'fail';
+        } catch (Throwable $e) {
+            $cache['status'] = 'fail';
+            $cache['error'] = $e->getMessage();
+        }
     }
 
     $storage = [
@@ -93,15 +148,106 @@ $getMonitoringSnapshot = function (): array {
 Route::get('/dashboard/{section?}', function (?string $section = null) use ($getMonitoringSnapshot) {
     // /dashboard (sin sección) => vista de inicio
     $section = $section ?: 'inicio';
-    if (!in_array($section, ['principal', 'inicio', 'transacciones', 'busqueda-transacciones', 'monitoreo', 'estadisticas', 'usuarios', 'conexionBD'], true)) {
+    if (!in_array($section, ['principal', 'inicio', 'transacciones', 'busqueda-transacciones', 'monitoreo', 'estadisticas', 'usuarios', 'conexionBD', 'tiempo-ejecucion-querys'], true)) {
         abort(404);
     }
 
-    $data = $getMonitoringSnapshot() + ['section' => $section];
+    // Group helper: tags persisted query logs (query_execution_logs.group) for queries executed inside $fn.
+    $withQueryGroup = function (string $group, callable $fn) {
+        $prev = null;
+        $hadPrev = false;
+        try {
+            if (app()->bound('query_log_group')) {
+                $prev = app('query_log_group');
+                $hadPrev = true;
+            }
+        } catch (Throwable $e) {
+            $hadPrev = false;
+            $prev = null;
+        }
+
+        app()->instance('query_log_group', $group);
+        try {
+            return $fn();
+        } finally {
+            try {
+                if ($hadPrev) {
+                    app()->instance('query_log_group', $prev);
+                } else {
+                    app()->forgetInstance('query_log_group');
+                }
+            } catch (Throwable $e) {
+                // ignore
+            }
+        }
+    };
+
+    // Solo hacemos probes explícitos de DB/cache en secciones que los muestran.
+    $probe = in_array($section, ['inicio', 'conexionBD'], true);
+    // Snapshot shouldn't tag queries for persistent logging (only search/transacciones are logged).
+    $data = $getMonitoringSnapshot($probe, $probe, null) + ['section' => $section];
+
+    if ($section === 'tiempo-ejecucion-querys') {
+        try {
+            $data['query_logs'] = QueryExecutionLog::query()
+                ->orderByDesc('executed_at')
+                ->limit(200)
+                ->get();
+            $data['query_logs_error'] = null;
+        } catch (Throwable $e) {
+            $data['query_logs'] = [];
+            $data['query_logs_error'] = 'No se pudo leer el historial. Verifica la conexión y ejecuta php artisan migrate.';
+        }
+    }
+
+    // Cachear metadata de esquema para no golpear information_schema en cada request.
+    $schemaTtl = (int) env('DASHBOARD_SCHEMA_TTL', 300);
+    if ($schemaTtl < 30) {
+        $schemaTtl = 30;
+    }
+
+    $schemaConn = (string) config('database.default');
+    $schemaDb = (string) config('database.connections.' . $schemaConn . '.database');
+    $schemaKeyPrefix = 'dashboard:schema:' . $schemaConn . ':' . $schemaDb;
+
+    $cacheRemember = function (string $key, int $seconds, callable $fn) {
+        try {
+            return Cache::remember($key, $seconds, $fn);
+        } catch (Throwable $e) {
+            return $fn();
+        }
+    };
+
+    $tableExists = function (string $tableName) use ($cacheRemember, $schemaTtl, $schemaKeyPrefix, $withQueryGroup): bool {
+        $k = $schemaKeyPrefix . ':has:' . $tableName;
+        return (bool) $cacheRemember($k, $schemaTtl, function () use ($tableName) {
+            try {
+                return Schema::hasTable($tableName);
+            } catch (Throwable $e) {
+                return false;
+            }
+        });
+    };
+
+    $getColumns = function (string $tableName) use ($cacheRemember, $schemaTtl, $schemaKeyPrefix, $withQueryGroup): array {
+        $k = $schemaKeyPrefix . ':cols:' . $tableName;
+        $cols = $cacheRemember($k, $schemaTtl, function () use ($tableName) {
+            try {
+                return Schema::getColumnListing($tableName);
+            } catch (Throwable $e) {
+                return [];
+            }
+        });
+
+        return is_array($cols) ? $cols : [];
+    };
 
     if ($section === 'busqueda-transacciones') {
         $cat = (string) request()->query('cat', 'personas');
         $cat = trim($cat) === '' ? 'personas' : $cat;
+        if (!in_array($cat, ['personas', 'empresas', 'ecommerce'], true)) {
+            $cat = 'personas';
+        }
 
         $q = (string) request()->query('q', '');
         $q = trim($q);
@@ -115,83 +261,115 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
                 'rows' => [],
                 'error' => null,
             ],
+            'empresas' => [
+                'rows' => [],
+                'error' => null,
+            ],
+            'ecommerce' => [
+                'rows' => [],
+                'error' => null,
+            ],
         ];
 
-        if ($cat === 'personas') {
-            try {
-                // Only execute the expensive query when the user actually submits a search.
-                if ($q === '') {
-                    $data['busqueda']['personas']['rows'] = [];
-                    $data['busqueda']['personas']['error'] = null;
-                } else {
-                $requiredTables = ['gt_pago_pasarela', 'cl_pagosclaro', 'gt_valores'];
-                foreach ($requiredTables as $tName) {
-                    if (!Schema::hasTable($tName)) {
-                        throw new RuntimeException('La tabla ' . $tName . ' no existe en la base de datos.');
+        $buildBusquedaConsulta1 = function (string $q) {
+            $query = DB::table('gt_pago_pasarela as b')
+                ->leftJoin('cl_pagosclaro as a', 'b.ID_TRANSACCION', '=', 'a.CLACO_NUMERO')
+                ->leftJoin('gt_valores as orgen', function ($join) {
+                    $join->on('b.ORIGEN_PAGO', '=', 'orgen.CODIGO')
+                        ->where('orgen.ELIMINADO', '=', '-1')
+                        ->where('orgen.LIST_NUMERO', '=', 10005);
+                })
+                ->leftJoin('gt_valores as frpag', function ($join) {
+                    $join->on('b.FORMA_PAGO', '=', 'frpag.CODIGO')
+                        ->where('frpag.ELIMINADO', '=', '-1')
+                        ->where('frpag.LIST_NUMERO', '=', 10001);
+                })
+                ->join('gt_valores as tiptra', function ($join) {
+                    $join->on('a.TIPO_TRANS', '=', 'tiptra.CODIGO')
+                        ->where('tiptra.ELIMINADO', '=', '-1')
+                        ->where('tiptra.LIST_NUMERO', '=', 10002);
+                })
+                ->select([
+                    'a.FECHA_INICIO as fecha_inicio',
+                    'b.ESTADO as ESTADO',
+                    'b.INTENTOS as INTENTOS',
+                    'b.TITULAR as TITULAR',
+                    'b.NUMEROFACTURA as NUMEROFACTURA',
+                    'b.FECHA_TRANSACCION as FECHA_TRANSACCION',
+                    'b.VALOR as VALOR',
+                    'b.DESCRIPCION_COMPRA as DESCRIPCION_COMPRA',
+                    'b.NUMERO_DOCUMENTO as NUMERO_DOCUMENTO',
+                    'b.TELEFONO as TELEFONO',
+                    'b.EMAIL as EMAIL',
+                    'b.CUS as CUS',
+                    'tiptra.VALOR_ES as TIPO_TRANS',
+                    'orgen.VALOR_ES as ORIGEN_PAGO',
+                    'frpag.VALOR_ES as FORMA_PAGO',
+                    'a.CodigoCliente as CodigoCliente',
+                    'b.PASA_NUMERO as PASA_NUMERO',
+                    'b.ID_TRANSACCION as ID_TRANSACCION',
+                ]);
+
+            if ($q !== '') {
+                $query->where(function ($w) use ($q) {
+                    if (ctype_digit($q)) {
+                        $w->orWhere('b.ID_TRANSACCION', '=', $q);
+                    } else {
+                        $w->orWhere('b.ID_TRANSACCION', 'like', '%' . $q . '%');
                     }
-                }
-
-                $query = DB::table('gt_pago_pasarela as b')
-                    ->leftJoin('cl_pagosclaro as a', 'b.ID_TRANSACCION', '=', 'a.CLACO_NUMERO')
-                    ->leftJoin('gt_valores as orgen', function ($join) {
-                        $join->on('b.ORIGEN_PAGO', '=', 'orgen.CODIGO')
-                            ->where('orgen.ELIMINADO', '=', '-1')
-                            ->where('orgen.LIST_NUMERO', '=', 10005);
-                    })
-                    ->leftJoin('gt_valores as frpag', function ($join) {
-                        $join->on('b.FORMA_PAGO', '=', 'frpag.CODIGO')
-                            ->where('frpag.ELIMINADO', '=', '-1')
-                            ->where('frpag.LIST_NUMERO', '=', 10001);
-                    })
-                    ->join('gt_valores as tiptra', function ($join) {
-                        $join->on('a.TIPO_TRANS', '=', 'tiptra.CODIGO')
-                            ->where('tiptra.ELIMINADO', '=', '-1')
-                            ->where('tiptra.LIST_NUMERO', '=', 10002);
-                    })
-                    ->select([
-                        'a.FECHA_INICIO as fecha_inicio',
-                        'b.ESTADO as ESTADO',
-                        'b.INTENTOS as INTENTOS',
-                        'b.TITULAR as TITULAR',
-                        'b.NUMEROFACTURA as NUMEROFACTURA',
-                        'b.FECHA_TRANSACCION as FECHA_TRANSACCION',
-                        'b.VALOR as VALOR',
-                        'b.DESCRIPCION_COMPRA as DESCRIPCION_COMPRA',
-                        'b.NUMERO_DOCUMENTO as NUMERO_DOCUMENTO',
-                        'b.TELEFONO as TELEFONO',
-                        'b.EMAIL as EMAIL',
-                        'b.CUS as CUS',
-                        'tiptra.VALOR_ES as TIPO_TRANS',
-                        'orgen.VALOR_ES as ORIGEN_PAGO',
-                        'frpag.VALOR_ES as FORMA_PAGO',
-                        'a.CodigoCliente as CodigoCliente',
-                        'b.PASA_NUMERO as PASA_NUMERO',
-                        'b.ID_TRANSACCION as ID_TRANSACCION',
-                    ]);
-
-                if ($q !== '') {
-                    $query->where(function ($w) use ($q) {
-                        // For numeric ids, prefer exact match on ID_TRANSACCION
-                        if (ctype_digit($q)) {
-                            $w->orWhere('b.ID_TRANSACCION', '=', $q);
-                        } else {
-                            $w->orWhere('b.ID_TRANSACCION', 'like', '%' . $q . '%');
-                        }
-                        $w->orWhere('b.NUMERO_DOCUMENTO', 'like', '%' . $q . '%')
-                            ->orWhere('b.EMAIL', 'like', '%' . $q . '%')
-                            ->orWhere('b.CUS', 'like', '%' . $q . '%');
-                    });
-                }
-
-                $query->orderByDesc('a.FECHA_INICIO');
-
-                $rows = $query->limit(50)->get();
-                $data['busqueda']['personas']['rows'] = $rows;
-                }
-            } catch (Throwable $e) {
-                $data['busqueda']['personas']['error'] = $e->getMessage();
-                $data['busqueda']['personas']['rows'] = [];
+                    $w->orWhere('b.NUMERO_DOCUMENTO', 'like', '%' . $q . '%')
+                        ->orWhere('b.EMAIL', 'like', '%' . $q . '%')
+                        ->orWhere('b.CUS', 'like', '%' . $q . '%');
+                });
             }
+
+            return $query->orderByDesc('a.FECHA_INICIO');
+        };
+
+        $runBusquedaConsulta1 = function (string $catKey) use ($q, $withQueryGroup, $tableExists, $buildBusquedaConsulta1, $section, &$data) {
+            try {
+                if ($q === '') {
+                    $data['busqueda'][$catKey]['rows'] = [];
+                    $data['busqueda'][$catKey]['error'] = null;
+                    $data['busqueda'][$catKey]['time_ms'] = null;
+                    return;
+                }
+
+                $withQueryGroup('dashboard|' . $section . '|busqueda|' . $catKey . '|prechecks', function () use ($tableExists) {
+                    $requiredTables = ['gt_pago_pasarela', 'cl_pagosclaro', 'gt_valores'];
+                    foreach ($requiredTables as $tName) {
+                        if (!$tableExists($tName)) {
+                            throw new RuntimeException('La tabla ' . $tName . ' no existe en la base de datos.');
+                        }
+                    }
+                });
+
+                $query = $buildBusquedaConsulta1($q);
+                $t0 = microtime(true);
+                $rows = $withQueryGroup('dashboard|' . $section . '|busqueda|' . $catKey . '|consulta1', function () use ($query) {
+                    return $query->limit(50)->get();
+                });
+                $elapsedMs = (int) round((microtime(true) - $t0) * 1000);
+                if ($elapsedMs < 0) {
+                    $elapsedMs = 0;
+                }
+
+                $data['busqueda'][$catKey]['rows'] = $rows;
+                $data['busqueda'][$catKey]['error'] = null;
+                $data['busqueda'][$catKey]['time_ms'] = $elapsedMs;
+            } catch (Throwable $e) {
+                $data['busqueda'][$catKey]['error'] = $e->getMessage();
+                $data['busqueda'][$catKey]['rows'] = [];
+                $data['busqueda'][$catKey]['time_ms'] = null;
+            }
+        };
+
+        if ($cat === 'personas') {
+            $runBusquedaConsulta1('personas');
+        } elseif ($cat === 'empresas') {
+            $runBusquedaConsulta1('empresas');
+        } elseif ($cat === 'ecommerce') {
+            $runBusquedaConsulta1('ecommerce');
         }
     }
 
@@ -222,59 +400,61 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
         // We first find matching transaction ids from any table, then filter both tables by those ids.
         $linkedSearchIds = null;
         if ($search !== '') {
-            $idBucket = [];
-            $tableConfigs = [
-                ['name' => 'cl_pagosclaro', 'id_col' => 'CLACO_NUMERO'],
-                ['name' => 'gt_pago_pasarela', 'id_col' => 'ID_TRANSACCION'],
-            ];
+            $linkedSearchIds = $withQueryGroup('dashboard|' . $section . '|transacciones|linked_search_ids', function () use ($tableExists, $getColumns, $search) {
+                $idBucket = [];
+                $tableConfigs = [
+                    ['name' => 'cl_pagosclaro', 'id_col' => 'CLACO_NUMERO'],
+                    ['name' => 'gt_pago_pasarela', 'id_col' => 'ID_TRANSACCION'],
+                ];
 
-            foreach ($tableConfigs as $cfg) {
-                try {
-                    if (!Schema::hasTable($cfg['name'])) {
-                        continue;
-                    }
-
-                    $cols = Schema::getColumnListing($cfg['name']);
-                    if (!in_array($cfg['id_col'], $cols, true)) {
-                        continue;
-                    }
-
-                    $filterable = array_values(array_intersect($cols, ['CUS', 'NUMERO_DOCUMENTO', 'ID_TRANSACCION', 'EMAIL', 'CLACO_NUMERO']));
-                    if (empty($filterable)) {
-                        continue;
-                    }
-
-                    $q = DB::table($cfg['name'])->select($cfg['id_col']);
-                    $q->where(function ($w) use ($filterable, $search) {
-                        foreach ($filterable as $col) {
-                            if (in_array($col, ['CLACO_NUMERO', 'ID_TRANSACCION'], true) && ctype_digit($search)) {
-                                $w->orWhere($col, '=', $search);
-                            } else {
-                                $w->orWhere($col, 'like', '%' . $search . '%');
-                            }
-                        }
-                    });
-
-                    // Cap to avoid giant IN() lists; enough for dashboard use.
-                    $ids = $q->limit(500)->pluck($cfg['id_col'])->all();
-                    foreach ($ids as $id) {
-                        if ($id === null || $id === '') {
+                foreach ($tableConfigs as $cfg) {
+                    try {
+                        if (!$tableExists($cfg['name'])) {
                             continue;
                         }
-                        $idBucket[] = (string) $id;
-                    }
-                } catch (Throwable $e) {
-                    // Ignore per-table search-id errors; table will fall back to empty results.
-                }
-            }
 
-            $idBucket = array_values(array_unique($idBucket));
-            $linkedSearchIds = empty($idBucket) ? [] : $idBucket;
+                        $cols = $getColumns($cfg['name']);
+                        if (!in_array($cfg['id_col'], $cols, true)) {
+                            continue;
+                        }
+
+                        $filterable = array_values(array_intersect($cols, ['CUS', 'NUMERO_DOCUMENTO', 'ID_TRANSACCION', 'EMAIL', 'CLACO_NUMERO']));
+                        if (empty($filterable)) {
+                            continue;
+                        }
+
+                        $q = DB::table($cfg['name'])->select($cfg['id_col']);
+                        $q->where(function ($w) use ($filterable, $search) {
+                            foreach ($filterable as $col) {
+                                if (in_array($col, ['CLACO_NUMERO', 'ID_TRANSACCION'], true) && ctype_digit($search)) {
+                                    $w->orWhere($col, '=', $search);
+                                } else {
+                                    $w->orWhere($col, 'like', '%' . $search . '%');
+                                }
+                            }
+                        });
+
+                        // Cap to avoid giant IN() lists; enough for dashboard use.
+                        $ids = $q->limit(500)->pluck($cfg['id_col'])->all();
+                        foreach ($ids as $id) {
+                            if ($id === null || $id === '') {
+                                continue;
+                            }
+                            $idBucket[] = (string) $id;
+                        }
+                    } catch (Throwable $e) {
+                        // Ignore per-table search-id errors; table will fall back to empty results.
+                    }
+                }
+
+                $idBucket = array_values(array_unique($idBucket));
+                return empty($idBucket) ? [] : $idBucket;
+            });
         }
 
-        $fetchTable = function (string $tableName, int $page, int $offset, string $param) use ($perPage, $pages, $search, $linkedSearchIds): array {
+        $fetchTable = function (string $tableName, int $page, int $offset, string $param) use ($perPage, $pages, $search, $linkedSearchIds, $tableExists, $getColumns): array {
             try {
-                if (!Schema::hasTable($tableName)) {
+                if (!$tableExists($tableName)) {
                     return [
                         'table' => $tableName,
                         'exists' => false,
@@ -292,7 +472,7 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
                     ];
                 }
 
-                $columns = Schema::getColumnListing($tableName);
+                $columns = $getColumns($tableName);
 
                 $idCol = null;
                 if ($tableName === 'cl_pagosclaro' && in_array('CLACO_NUMERO', $columns, true)) {
@@ -383,8 +563,12 @@ Route::get('/dashboard/{section?}', function (?string $section = null) use ($get
                 'param_pasarela' => 'p_pasarela',
                 'q' => $search,
             ],
-            'cl_pagosclaro' => $fetchTable('cl_pagosclaro', $pageClaro, $offsetClaro, 'p_claro'),
-            'gt_pago_pasarela' => $fetchTable('gt_pago_pasarela', $pagePasarela, $offsetPasarela, 'p_pasarela'),
+            'cl_pagosclaro' => $withQueryGroup('dashboard|' . $section . '|transacciones|cl_pagosclaro', function () use ($fetchTable, $pageClaro, $offsetClaro) {
+                return $fetchTable('cl_pagosclaro', $pageClaro, $offsetClaro, 'p_claro');
+            }),
+            'gt_pago_pasarela' => $withQueryGroup('dashboard|' . $section . '|transacciones|gt_pago_pasarela', function () use ($fetchTable, $pagePasarela, $offsetPasarela) {
+                return $fetchTable('gt_pago_pasarela', $pagePasarela, $offsetPasarela, 'p_pasarela');
+            }),
         ];
     }
 

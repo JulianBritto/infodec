@@ -621,6 +621,10 @@
                 <span class="icon">DB</span>
                 <span>Conexión BD</span>
             </a>
+            <a href="{{ url('/dashboard/tiempo-ejecucion-querys') }}" data-section-link="tiempo-ejecucion-querys">
+                <span class="icon">Q</span>
+                <span>Tiempo ejecucion Querys</span>
+            </a>
         </nav>
 
         <div class="side-meta">
@@ -664,6 +668,7 @@
             @include('dashboard.sections.estadisticas')
             @include('dashboard.sections.conexionBD')
             @include('dashboard.sections.usuarios')
+            @include('dashboard.sections.tiempo-ejecucion-querys')
 
             <div class="footer">
                 Ruta: <code>/dashboard</code> · Usa el menú para navegar.
@@ -674,7 +679,7 @@
 
 <script>
     (function () {
-        var SECTION_KEYS = ['principal', 'inicio', 'transacciones', 'busqueda-transacciones', 'monitoreo', 'estadisticas', 'usuarios', 'conexionBD'];
+        var SECTION_KEYS = ['principal', 'inicio', 'transacciones', 'busqueda-transacciones', 'monitoreo', 'estadisticas', 'usuarios', 'conexionBD', 'tiempo-ejecucion-querys'];
 
         // Keep last pagination state for Transacciones (since pager doesn't change URL)
         var transState = { p_claro: 1, p_pasarela: 1, q: '' };
@@ -924,15 +929,21 @@
             });
         }
 
-        // Client-side navigation (no reload) but updates URL.
+        // Client-side navigation (no reload) for heavy sections only.
+        // For the rest, use normal navigation so server-rendered snapshot (DB/cache status, etc.) is always fresh.
         document.addEventListener('click', function (e) {
             var a = e.target && e.target.closest ? e.target.closest('a[data-section-link]') : null;
             if (!a) return;
             var key = a.getAttribute('data-section-link');
             if (!key) return;
 
-            e.preventDefault();
-            navigateTo(key, true);
+            if (key === 'transacciones' || key === 'busqueda-transacciones') {
+                e.preventDefault();
+                navigateTo(key, true);
+                return;
+            }
+
+            // Allow default navigation for other sections.
         });
 
         window.addEventListener('popstate', function () {
@@ -1063,34 +1074,76 @@
             if (!a) return;
 
             e.preventDefault();
-            busquedaState.cat = a.getAttribute('data-busqueda-cat') || 'personas';
-            // Keep current query (if any)
-            var input = document.getElementById('busquedaPersonasInput');
+            var nextCat = a.getAttribute('data-busqueda-cat') || 'personas';
+            var prevCat = busquedaState.cat || 'personas';
+
+            function idsForCat(cat) {
+                if (cat === 'empresas') return { input: 'busquedaEmpresasInput' };
+                if (cat === 'ecommerce') return { input: 'busquedaEcommerceInput' };
+                return { input: 'busquedaPersonasInput' };
+            }
+
+            // Keep current query (if any) from the currently visible portal.
+            var prevIds = idsForCat(prevCat);
+            var input = document.getElementById(prevIds.input);
             if (input) busquedaState.q = String(input.value || '');
+
+            busquedaState.cat = nextCat;
             navigateTo('busqueda-transacciones', true);
         });
 
-        // Portal Personas search
+        function detectBusquedaCatFromFormId(formId) {
+            if (formId === 'busquedaEmpresasSearch') return 'empresas';
+            if (formId === 'busquedaEcommerceSearch') return 'ecommerce';
+            return 'personas';
+        }
+
+        function inputIdForBusquedaCat(cat) {
+            if (cat === 'empresas') return 'busquedaEmpresasInput';
+            if (cat === 'ecommerce') return 'busquedaEcommerceInput';
+            return 'busquedaPersonasInput';
+        }
+
+        function clearIdForBusquedaCat(cat) {
+            if (cat === 'empresas') return 'busquedaEmpresasClear';
+            if (cat === 'ecommerce') return 'busquedaEcommerceClear';
+            return 'busquedaPersonasClear';
+        }
+
+        function resultsIdForBusquedaCat(cat) {
+            if (cat === 'empresas') return 'busquedaEmpresasResults';
+            if (cat === 'ecommerce') return 'busquedaEcommerceResults';
+            return 'busquedaPersonasResults';
+        }
+
+        // Portal Personas/Empresas/Ecommerce search
         document.addEventListener('submit', function (e) {
             var form = e.target;
-            if (!form || form.id !== 'busquedaPersonasSearch') return;
+            if (!form || !form.id) return;
+            if (['busquedaPersonasSearch', 'busquedaEmpresasSearch', 'busquedaEcommerceSearch'].indexOf(form.id) === -1) return;
 
             var section = document.querySelector('[data-section="busqueda-transacciones"]');
             if (!section || section.hidden) return;
 
             e.preventDefault();
 
-            busquedaState.cat = 'personas';
-            var input = document.getElementById('busquedaPersonasInput');
+            busquedaState.cat = detectBusquedaCatFromFormId(form.id);
+            var input = document.getElementById(inputIdForBusquedaCat(busquedaState.cat));
             busquedaState.q = (input && input.value) ? String(input.value) : '';
 
             navigateTo('busqueda-transacciones', true);
         });
 
-        // Portal Personas clear search
+        // Portal Personas/Empresas/Ecommerce clear search
         document.addEventListener('click', function (e) {
-            var btnClear = e.target && e.target.closest ? e.target.closest('#busquedaPersonasClear') : null;
-            if (!btnClear) return;
+            var btn = e.target && e.target.closest ? e.target.closest('button[id]') : null;
+            if (!btn) return;
+
+            var cat = null;
+            if (btn.id === 'busquedaPersonasClear') cat = 'personas';
+            if (btn.id === 'busquedaEmpresasClear') cat = 'empresas';
+            if (btn.id === 'busquedaEcommerceClear') cat = 'ecommerce';
+            if (!cat) return;
 
             var section = document.querySelector('[data-section="busqueda-transacciones"]');
             if (!section || section.hidden) return;
@@ -1098,17 +1151,17 @@
             e.preventDefault();
 
             // Keep menu + accordion visible; just clear current query/results.
-            busquedaState.cat = 'personas';
+            busquedaState.cat = cat;
             busquedaState.q = '';
             replaceBusquedaUrlNoQuery();
 
-            var input = document.getElementById('busquedaPersonasInput');
+            var input = document.getElementById(inputIdForBusquedaCat(cat));
             if (input) {
                 input.value = '';
                 try { input.focus(); } catch (e2) {}
             }
 
-            var results = document.getElementById('busquedaPersonasResults');
+            var results = document.getElementById(resultsIdForBusquedaCat(cat));
             if (results) {
                 results.innerHTML = '<div class="placeholder" style="margin-top: 10px;">No hay registros para mostrar.</div>';
             }

@@ -1,6 +1,6 @@
 param(
   [string]$BindHost = "127.0.0.1",
-  [int]$PortStart = 8010,
+  [int]$PortStart = 8099,
   [int]$PortEnd = 8099,
   [switch]$KillPort,
   [switch]$UpdateEnv
@@ -19,8 +19,8 @@ function Get-ListeningPid([int]$Port) {
 
 function Get-FreePort([int]$Start, [int]$End) {
   for ($p = $Start; $p -le $End; $p++) {
-    $pid = Get-ListeningPid -Port $p
-    if (-not $pid) { return $p }
+    $listeningPid = Get-ListeningPid -Port $p
+    if (-not $listeningPid) { return $p }
   }
   return $null
 }
@@ -38,17 +38,19 @@ try {
     throw "No se encontró el router de Laravel: $router"
   }
 
+  if ($KillPort) {
+    for ($p = $PortStart; $p -le $PortEnd; $p++) {
+      $listeningPid = Get-ListeningPid -Port $p
+      if ($listeningPid) {
+        Stop-Process -Id $listeningPid -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 300
+      }
+    }
+  }
+
   $port = Get-FreePort -Start $PortStart -End $PortEnd
   if (-not $port) {
     throw "No encontré un puerto libre entre $PortStart y $PortEnd."
-  }
-
-  if ($KillPort) {
-    $pid = Get-ListeningPid -Port $port
-    if ($pid) {
-      Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
-      Start-Sleep -Seconds 1
-    }
   }
 
   if ($UpdateEnv -and (Test-Path ".env")) {
